@@ -1,0 +1,53 @@
+# Fabrique PES6Connect.exe à chaque modification.
+# - Chaque modification : l'exe est téléchargeable dans l'onglet « Actions » (rubrique Artifacts).
+# - Étiquette « v* » (ex. v0.1.0) : une page « Release » publique est créée avec le zip.
+name: Fabrication
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Tests
+        run: dotnet test tests/PES6Connect.Core.Tests -c Release
+
+      - name: Fabrication de l'exe
+        run: dotnet publish src/PES6Connect.App -c Release -o publish -p:DebugType=None -p:DebugSymbols=false
+
+      - name: Préparation du dossier à distribuer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force PES6Connect | Out-Null
+          Copy-Item publish/PES6Connect.exe PES6Connect/
+          Copy-Item config/pes6connect.json PES6Connect/
+          Copy-Item docs/LISEZMOI.txt PES6Connect/
+          Compress-Archive -Path PES6Connect -DestinationPath PES6Connect.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PES6Connect
+          path: PES6Connect/
+
+      - name: Publication (étiquettes v* seulement)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" PES6Connect.zip --title "PES6 Connect ${{ github.ref_name }}" --notes "Télécharge PES6Connect.zip, extrais-le, puis lance PES6Connect.exe."
+    permissions:
+      contents: write

@@ -1,0 +1,25 @@
+PES6 Connect - mode d'emploi rapide
+===================================
+
+1. Extrais ce dossier (clic droit sur le .zip > « Extraire tout »).
+   Ne lance pas l'outil directement depuis le .zip.
+
+2. Ouvre « pes6connect.json » avec le Bloc-notes et remplis :
+     "nomJoueur": ton prénom ou pseudo,
+     "idReseauZeroTier": l'identifiant du réseau donné par l'organisatrice.
+   (En général, l'organisatrice te l'envoie déjà rempli.)
+
+3. Double-clique sur PES6Connect.exe.
+
+   Windows affiche peut-être « Windows a protégé votre ordinateur » :
+   c'est normal, l'outil n'a pas de certificat payant.
+   Clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+   Windows demande ensuite l'autorisation administrateur : réponds « Oui ».
+   Elle est nécessaire pour installer ZeroTier et régler le réseau.
+
+4. Suis les indications de la fenêtre :
+     ✅ tout va bien   ⚠️ action conseillée   ❌ à corriger
+
+En cas de problème : clique sur « Copier le rapport », colle-le dans
+un message (Ctrl+V) et envoie-le avec une capture d'écran.
