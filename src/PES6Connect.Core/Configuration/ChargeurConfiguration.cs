@@ -93,7 +93,12 @@ public static class ChargeurConfiguration
             problemes.Add("L'identifiant du réseau ZeroTier doit faire 16 caractères (chiffres 0-9 et lettres a-f).");
         }
 
-        // L'empreinte de PES 6 est facultative tant que l'étape 4 n'existe pas.
+        // L'empreinte est facultative : vide = pas encore de référence.
+        if (config.EmpreintePes6.Length > 0 && !EstEmpreinteValide(config.EmpreintePes6))
+        {
+            problemes.Add("L'empreinte de PES 6 (« empreintePes6 ») doit faire 64 caractères (chiffres 0-9 et lettres a-f).");
+        }
+
         return problemes;
     }
 
@@ -101,11 +106,39 @@ public static class ChargeurConfiguration
     public static bool EstIdReseauValide(string id) =>
         id.Length == 16 && id.All(Uri.IsHexDigit);
 
+    /// <summary>Une empreinte SHA-256 = 64 caractères hexadécimaux.</summary>
+    public static bool EstEmpreinteValide(string empreinte) =>
+        empreinte.Length == 64 && empreinte.All(Uri.IsHexDigit);
+
+    /// <summary>
+    /// Modifie une valeur du fichier puis le réenregistre. Renvoie null si tout va bien,
+    /// sinon un message d'erreur.
+    /// </summary>
+    public static string? Modifier(string chemin, Action<ConfigurationPes6Connect> modification)
+    {
+        var actuelle = Charger(chemin);
+        if (actuelle.Configuration is null)
+        {
+            return string.Join(" ", actuelle.Problemes);
+        }
+        modification(actuelle.Configuration);
+        try
+        {
+            File.WriteAllText(chemin, JsonSerializer.Serialize(actuelle.Configuration, Options));
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Impossible d'enregistrer {NomFichier} : {ex.Message}";
+        }
+    }
+
     private static void Normaliser(ConfigurationPes6Connect config)
     {
         config.NomJoueur = (config.NomJoueur ?? "").Trim();
         config.IdReseauZeroTier = (config.IdReseauZeroTier ?? "").Trim().ToLowerInvariant();
         config.EmpreintePes6 = (config.EmpreintePes6 ?? "").Trim().ToLowerInvariant();
+        config.CheminPes6 = (config.CheminPes6 ?? "").Trim();
     }
 
     private static ResultatConfiguration CreerModele(string chemin)

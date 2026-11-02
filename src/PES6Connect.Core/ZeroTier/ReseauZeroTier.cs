@@ -29,6 +29,13 @@ public static class LecteurApiZeroTier
         return Texte(doc.RootElement, "address");
     }
 
+    /// <summary>Version de ZeroTier, réponse de GET /status.</summary>
+    public static string? LireVersion(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return Texte(doc.RootElement, "version");
+    }
+
     /// <summary>Réponse de GET /network : liste des réseaux rejoints.</summary>
     public static IReadOnlyList<ReseauZeroTier> LireReseaux(string json)
     {

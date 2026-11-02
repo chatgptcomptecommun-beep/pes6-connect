@@ -67,10 +67,48 @@
 | R6 | Mettre un faux ID valide (ex. `0000000000000000`) dans le fichier | **Tout revérifier** puis **Rejoindre** | ❌ « Ce réseau n'existe pas » (ou ⚠️ en attente : ZeroTier peut mettre du temps à répondre) |
 | R7 | Arrêter le service ZeroTier | **Tout revérifier** | Ligne réseau grisée « En attente : ZeroTier doit d'abord fonctionner » |
 
+## Étape 3 — Réglages réseau de Windows : comment ça marche
+
+- Windows classe souvent le réseau ZeroTier en **« Public »**, ce qui bloque les parties LAN.
+  PES6 Connect le passe en **« Privé »**.
+- PES 6 annonce ses parties LAN par la carte réseau **prioritaire** (celle qui a la plus petite
+  « métrique »). PES6 Connect donne la métrique **1** à la carte ZeroTier.
+- Les réglages sont lus et modifiés avec PowerShell (`Get/Set-NetConnectionProfile`,
+  `Get/Set-NetIPInterface`). La carte ZeroTier est reconnue grâce à son adresse 10.x.x.x.
+- Le bouton **Annuler** (visible quand tout est vert) rend à Windows le choix automatique
+  de la priorité. Le réseau reste en « Privé ».
+
+## Procédure de test de l'étape 3
+
+| # | Situation de départ | Action | Résultat attendu |
+|---|---|---|---|
+| C1 | Réseau rejoint, réglages d'origine | Lancer l'exe | ⚠️ « Public » et/ou « pas prioritaire (c'est « Wi-Fi ») », bouton **Corriger** |
+| C2 | Suite de C1 | **Corriger** | ✅ « Réseau ZeroTier en Privé et prioritaire » |
+| C3 | Vérification à la main | Paramètres Windows → Réseau → ZeroTier One | Type de réseau : **Privé** |
+| C4 | Suite de C2 | **Annuler** → OK | ⚠️ « pas prioritaire », bouton **Corriger** de nouveau |
+| C5 | Après C2, redémarrer le PC | Relancer l'exe | ✅ (les réglages sont conservés) |
+
+## Étape 4 — PES 6 : comment ça marche
+
+- PES6 Connect cherche `PES6.exe` : chemin choisi à la main (`cheminPes6` dans le fichier de
+  configuration), puis registre Windows (installateur Konami), puis
+  `C:\Program Files (x86)\KONAMI\Pro Evolution Soccer 6\`.
+- Il calcule son **empreinte SHA-256** et la compare à `empreintePes6`.
+- Option A retenue : **le PC de l'organisatrice sert de référence**. Bouton **En faire la
+  référence** (visible seulement si aucune référence n'est définie) : l'empreinte est
+  enregistrée dans le fichier local et copiée pour être ajoutée au fichier distribué à tous.
+
+## Procédure de test de l'étape 4
+
+| # | Situation de départ | Action | Résultat attendu |
+|---|---|---|---|
+| P1 | `empreintePes6` vide | Lancer l'exe | ⚠️ « PES 6 trouvé (empreinte xxxxxxxx…). Aucune référence… », bouton **En faire la référence** — ou ❌ « introuvable » + **Choisir PES6.exe** |
+| P2 | Si introuvable | **Choisir PES6.exe** et sélectionner le fichier | Même résultat que P1 ; `cheminPes6` rempli dans le fichier |
+| P3 | Suite de P1 | **En faire la référence** | ✅ « version identique » ; l'empreinte est copiée → l'envoyer |
+| P4 | Modifier un caractère de `empreintePes6` dans le fichier | **Tout revérifier** | ❌ « Ta version de PES 6 est différente… » |
+
 ## Étapes suivantes (rappel)
 
-3. Passer la carte ZeroTier en réseau « Privé » et lui donner la plus petite métrique.
-4. Empreinte SHA-256 de `pes6.exe` comparée à la référence du fichier de config.
 5. Règle de pare-feu entrante autorisant `pes6.exe`.
 6. Présence entre instances PES6 Connect sur le réseau ZeroTier, ping, connexion directe
    ou relayée, hôte conseillé (pire ping minimal).

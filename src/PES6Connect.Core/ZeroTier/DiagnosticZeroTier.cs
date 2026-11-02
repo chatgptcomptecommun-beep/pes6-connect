@@ -13,6 +13,9 @@ public enum ActionProposee
     Installer,
     DemarrerService,
     Rejoindre,
+    CorrigerCarte,
+    ChoisirPes6,
+    DefinirReference,
 }
 
 public sealed record ResultatVerification(NiveauVerification Niveau, string Message, ActionProposee Action);

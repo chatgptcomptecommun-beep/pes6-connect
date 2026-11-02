@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using PES6Connect.Core.Configuration;
+using PES6Connect.Core.Pes6;
+using PES6Connect.Core.Reseau;
 using PES6Connect.Core.ZeroTier;
 
 namespace PES6Connect.App;
@@ -17,11 +19,11 @@ internal sealed class FenetrePrincipale : Form
     private readonly LigneVerification _ligneConfig = new("Fichier de configuration");
     private readonly LigneVerification _ligneZeroTier = new("ZeroTier");
     private readonly LigneVerification _ligneReseau = new("Notre réseau");
+    private readonly LigneVerification _ligneCarte = new("Réglages réseau de Windows");
+    private readonly LigneVerification _lignePes6 = new("PES 6 (version identique)");
     private readonly LigneVerification[] _lignesAVenir =
     [
-        new("PES 6 (version identique)"),
         new("Pare-feu Windows"),
-        new("Priorité de la carte ZeroTier"),
         new("Joueurs en ligne"),
     ];
     private readonly Button _boutonReverifier = new() { Text = "Tout revérifier", AutoSize = true, Padding = new Padding(8, 3, 8, 3) };
@@ -36,6 +38,10 @@ internal sealed class FenetrePrincipale : Form
     private string? _identifiantPc;
     private ReseauZeroTier? _dernierReseau;
     private bool _verificationReseauEnCours;
+    private ConfigurationPes6Connect? _config;
+    private EtatCarteZeroTier? _derniereCarte;
+    private string? _cheminPes6;
+    private string? _empreintePes6;
 
     public FenetrePrincipale(string cheminConfig, SondeZeroTierWindows sonde, InstallateurZeroTier installateur)
     {
@@ -47,7 +53,7 @@ internal sealed class FenetrePrincipale : Form
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 560);
+        ClientSize = new Size(640, 620);
         MinimumSize = new Size(560, 480);
 
         var liste = new FlowLayoutPanel
@@ -93,7 +99,14 @@ internal sealed class FenetrePrincipale : Form
         };
     }
 
-    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau];
+    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau, _ligneCarte, _lignePes6];
+
+    private static Statut VersStatut(NiveauVerification niveau) => niveau switch
+    {
+        NiveauVerification.Ok => Statut.Ok,
+        NiveauVerification.Attention => Statut.Attention,
+        _ => Statut.Erreur,
+    };
 
     private async Task VerifierToutAsync()
     {
@@ -103,6 +116,7 @@ internal sealed class FenetrePrincipale : Form
             VerifierConfiguration();
             await VerifierZeroTierAsync();
             await VerifierReseauAsync();
+            await VerifierPes6Async();
         }
         finally
         {
@@ -115,6 +129,7 @@ internal sealed class FenetrePrincipale : Form
     private void VerifierConfiguration()
     {
         var resultat = ChargeurConfiguration.Charger(_cheminConfig);
+        _config = resultat.Configuration;
         var id = resultat.Configuration?.IdReseauZeroTier ?? "";
         _idReseau = ChargeurConfiguration.EstIdReseauValide(id) ? id : null;
         var problemes = string.Join(Environment.NewLine, resultat.Problemes);
@@ -282,8 +297,9 @@ internal sealed class FenetrePrincipale : Form
         }
         try
         {
-            _identifiantPc ??= await _api.LireIdentifiantPcAsync();
+            await LireStatutApiAsync();
             AfficherReseau(await _api.LireReseauAsync(_idReseau));
+            await VerifierCarteAsync();
         }
         catch (ErreurZeroTier ex)
         {
@@ -301,12 +317,7 @@ internal sealed class FenetrePrincipale : Form
     {
         _dernierReseau = reseau;
         var diagnostic = DiagnosticReseau.Evaluer(reseau, _identifiantPc);
-        _ligneReseau.Definir(diagnostic.Niveau switch
-        {
-            NiveauVerification.Ok => Statut.Ok,
-            NiveauVerification.Attention => Statut.Attention,
-            _ => Statut.Erreur,
-        }, diagnostic.Message);
+        _ligneReseau.Definir(VersStatut(diagnostic.Niveau), diagnostic.Message);
 
         if (diagnostic.Action == ActionProposee.Rejoindre)
         {
@@ -342,7 +353,7 @@ internal sealed class FenetrePrincipale : Form
         _ligneReseau.DefinirAction(null);
         try
         {
-            _identifiantPc ??= await _api.LireIdentifiantPcAsync();
+            await LireStatutApiAsync();
             var reseau = await _api.RejoindreAsync(_idReseau);
 
             // ZeroTier met quelques secondes à obtenir sa réponse : on patiente jusqu'à 15 s.
@@ -363,6 +374,22 @@ internal sealed class FenetrePrincipale : Form
         {
             _verificationReseauEnCours = false;
         }
+        await VerifierCarteAsync();
+    }
+
+    /// <summary>Lit l'identifiant du PC et, si besoin, complète la version de ZeroTier affichée.</summary>
+    private async Task LireStatutApiAsync()
+    {
+        if (_identifiantPc is not null)
+        {
+            return;
+        }
+        var (identifiant, version) = await _api.LireStatutAsync();
+        _identifiantPc = identifiant;
+        if (_derniereObservation is { Version: null } obs && version is not null)
+        {
+            AfficherZeroTier(obs with { Version = version });
+        }
     }
 
     private Task CopierIdentifiantAsync()
@@ -378,6 +405,182 @@ internal sealed class FenetrePrincipale : Form
     }
 
     private void ArreterAttente() => _minuterieAttente.Stop();
+
+    // ---------- Étape 3 : réseau « Privé » et carte ZeroTier prioritaire ----------
+
+    private async Task VerifierCarteAsync()
+    {
+        var ip = _dernierReseau is { Statut: "OK" } r ? r.AdresseIPv4 : null;
+        if (ip is null || _derniereObservation?.Service != EtatService.Demarre)
+        {
+            _derniereCarte = null;
+            _ligneCarte.Definir(Statut.AVenir, "En attente : il faut d'abord être connecté à notre réseau.");
+            _ligneCarte.DefinirAction(null);
+            return;
+        }
+
+        _ligneCarte.Definir(Statut.EnCours, "Vérification…");
+        _ligneCarte.DefinirAction(null);
+        try
+        {
+            AfficherCarte(await CarteZeroTierWindows.LireAsync(ip));
+        }
+        catch (ErreurZeroTier ex)
+        {
+            _ligneCarte.Definir(Statut.Erreur, ex.Message);
+            _ligneCarte.DefinirAction("Réessayer", VerifierCarteAsync);
+        }
+    }
+
+    private void AfficherCarte(EtatCarteZeroTier? carte)
+    {
+        _derniereCarte = carte;
+        var diagnostic = DiagnosticCarte.Evaluer(carte);
+        _ligneCarte.Definir(VersStatut(diagnostic.Niveau), diagnostic.Message);
+
+        if (diagnostic.Action == ActionProposee.CorrigerCarte)
+        {
+            _ligneCarte.DefinirAction("Corriger", CorrigerCarteAsync);
+        }
+        else if (carte is { MetriqueAutomatique: false } && diagnostic.Niveau == NiveauVerification.Ok)
+        {
+            _ligneCarte.DefinirAction("Annuler", RetablirCarteAsync);
+        }
+        else
+        {
+            _ligneCarte.DefinirAction(null);
+        }
+    }
+
+    private async Task CorrigerCarteAsync()
+    {
+        if (_derniereCarte is not { } carte)
+        {
+            return;
+        }
+        _ligneCarte.Definir(Statut.EnCours, "Correction des réglages réseau…");
+        var erreur = await CarteZeroTierWindows.CorrigerAsync(carte.Index);
+        await VerifierCarteAsync();
+        if (erreur is not null && _ligneCarte.Statut != Statut.Ok)
+        {
+            _ligneCarte.Definir(Statut.Erreur, erreur);
+            _ligneCarte.DefinirAction("Réessayer", CorrigerCarteAsync);
+        }
+    }
+
+    private async Task RetablirCarteAsync()
+    {
+        if (_derniereCarte is not { } carte)
+        {
+            return;
+        }
+        var reponse = MessageBox.Show(this,
+            "Rendre à Windows le choix automatique de la priorité des cartes réseau ?\n\n"
+            + "PES 6 risque de ne plus voir les parties LAN. Tu pourras recliquer sur « Corriger » ensuite.",
+            "Annuler la priorité", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+        if (reponse != DialogResult.OK)
+        {
+            return;
+        }
+        var erreur = await CarteZeroTierWindows.RetablirAsync(carte.Index);
+        await VerifierCarteAsync();
+        if (erreur is not null)
+        {
+            _ligneCarte.Definir(Statut.Erreur, erreur);
+        }
+    }
+
+    // ---------- Étape 4 : PES 6 et empreinte ----------
+
+    private async Task VerifierPes6Async()
+    {
+        _lignePes6.Definir(Statut.EnCours, "Recherche de PES 6…");
+        _lignePes6.DefinirAction(null);
+
+        var cheminChoisi = _config?.CheminPes6;
+        (_cheminPes6, _empreintePes6) = await Task.Run(() =>
+        {
+            var chemin = LocalisateurPes6.Trouver(cheminChoisi);
+            if (chemin is null)
+            {
+                return ((string?)null, (string?)null);
+            }
+            try
+            {
+                return (chemin, EmpreinteFichier.CalculerSha256(chemin));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return (chemin, null);
+            }
+        });
+
+        var diagnostic = DiagnosticPes6.Evaluer(_cheminPes6, _empreintePes6, _config?.EmpreintePes6 ?? "");
+        _lignePes6.Definir(VersStatut(diagnostic.Niveau), diagnostic.Message);
+        switch (diagnostic.Action)
+        {
+            case ActionProposee.ChoisirPes6:
+                _lignePes6.DefinirAction("Choisir PES6.exe", ChoisirPes6Async);
+                break;
+            case ActionProposee.DefinirReference:
+                _lignePes6.DefinirAction("En faire la référence", DefinirReferenceAsync);
+                break;
+            default:
+                _lignePes6.DefinirAction(null);
+                break;
+        }
+    }
+
+    private async Task ChoisirPes6Async()
+    {
+        using var dialogue = new OpenFileDialog
+        {
+            Title = "Où se trouve PES6.exe ?",
+            Filter = "Pro Evolution Soccer 6 (PES6.exe)|PES6.exe|Programmes (*.exe)|*.exe",
+            CheckFileExists = true,
+        };
+        if (dialogue.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+        var erreur = ChargeurConfiguration.Modifier(_cheminConfig, c => c.CheminPes6 = dialogue.FileName);
+        if (erreur is not null)
+        {
+            MessageBox.Show(this, erreur, "PES6 Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        VerifierConfiguration();
+        await VerifierPes6Async();
+    }
+
+    private async Task DefinirReferenceAsync()
+    {
+        if (_empreintePes6 is not { } empreinte)
+        {
+            return;
+        }
+        var reponse = MessageBox.Show(this,
+            "Ce PC va servir de référence : tous les joueurs devront avoir exactement le même PES6.exe.\n\n"
+            + $"Fichier : {_cheminPes6}\n\nContinuer ?",
+            "Empreinte de référence", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+        if (reponse != DialogResult.OK)
+        {
+            return;
+        }
+        var erreur = ChargeurConfiguration.Modifier(_cheminConfig, c => c.EmpreintePes6 = empreinte);
+        if (erreur is not null)
+        {
+            MessageBox.Show(this, erreur, "PES6 Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        Clipboard.SetText(empreinte);
+        MessageBox.Show(this,
+            $"Empreinte enregistrée et copiée :\n\n{empreinte}\n\n"
+            + "Colle-la (Ctrl+V) dans ton message pour qu'elle soit ajoutée au fichier de configuration distribué à tous.",
+            "PES6 Connect", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        VerifierConfiguration();
+        await VerifierPes6Async();
+    }
 
     // ---------- Rapport pour le dépannage ----------
 
@@ -401,6 +604,14 @@ internal sealed class FenetrePrincipale : Form
         {
             rapport.AppendLine($"Réseau : id={r.Id}, statut={r.Statut}, adresses={string.Join(" ", r.AdressesAttribuees)}, carte={r.NomCarte ?? "-"}");
         }
+        if (_derniereCarte is { } carte)
+        {
+            var autres = string.Join(", ", carte.AutresCartes.Select(a => $"{a.Nom}={a.Metrique}"));
+            rapport.AppendLine($"Carte : index={carte.Index}, nom={carte.Nom}, catégorie={carte.Categorie ?? "-"}, "
+                + $"métrique={carte.Metrique} (auto={carte.MetriqueAutomatique}), autres : {autres}");
+        }
+        rapport.AppendLine($"PES 6 : {_cheminPes6 ?? "introuvable"}");
+        rapport.AppendLine($"Empreinte PES 6 : {_empreintePes6 ?? "-"}");
         if (_derniereInstallation is { } i)
         {
             rapport.AppendLine($"Installation : winget={(i.WingetDisponible ? "oui" : "non")}, code={i.CodeSortie?.ToString() ?? "-"}, {i.Message}");

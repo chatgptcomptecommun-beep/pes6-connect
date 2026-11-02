@@ -26,9 +26,14 @@ internal sealed class ClientApiZeroTier : IDisposable
 
     public void Dispose() => _http.Dispose();
 
-    /// <summary>Identifiant ZeroTier de ce PC (10 caractères), à donner à l'organisatrice.</summary>
-    public async Task<string?> LireIdentifiantPcAsync() =>
-        LecteurApiZeroTier.LireIdentifiantPc(await EnvoyerAsync(HttpMethod.Get, "status"));
+    /// <summary>
+    /// Identifiant ZeroTier de ce PC (10 caractères, à donner à l'organisatrice) et version de ZeroTier.
+    /// </summary>
+    public async Task<(string? IdentifiantPc, string? Version)> LireStatutAsync()
+    {
+        var json = await EnvoyerAsync(HttpMethod.Get, "status");
+        return (LecteurApiZeroTier.LireIdentifiantPc(json), LecteurApiZeroTier.LireVersion(json));
+    }
 
     /// <summary>Le réseau demandé s'il a déjà été rejoint, sinon null.</summary>
     public async Task<ReseauZeroTier?> LireReseauAsync(string idReseau) =>

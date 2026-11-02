@@ -43,7 +43,9 @@ public sealed class ReseauZeroTierTests
         Assert.Equal("REQUESTING_CONFIGURATION", r.Statut);
         Assert.Empty(r.AdressesAttribuees);
 
-        Assert.Equal("a1b2c3d4e5", LecteurApiZeroTier.LireIdentifiantPc("""{ "address": "a1b2c3d4e5", "online": true }"""));
+        const string statut = """{ "address": "a1b2c3d4e5", "online": true, "version": "1.14.2" }""";
+        Assert.Equal("a1b2c3d4e5", LecteurApiZeroTier.LireIdentifiantPc(statut));
+        Assert.Equal("1.14.2", LecteurApiZeroTier.LireVersion(statut));
     }
 
     [Fact]

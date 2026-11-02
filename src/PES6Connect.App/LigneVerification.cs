@@ -12,12 +12,7 @@ internal enum Statut
 /// <summary>Une ligne de la liste de vérifications : pastille, titre, explication, bouton.</summary>
 internal sealed class LigneVerification : TableLayoutPanel
 {
-    private readonly Label _pastille = new()
-    {
-        AutoSize = true,
-        Font = new Font("Segoe UI Emoji", 16f),
-        Margin = new Padding(0, 2, 8, 0),
-    };
+    private readonly PastilleStatut _pastille = new();
     private readonly Label _titre = new() { AutoSize = true, Font = new Font("Segoe UI", 11f, FontStyle.Bold) };
     private readonly Label _detail = new() { AutoSize = true, Font = new Font("Segoe UI", 9.5f), MaximumSize = new Size(420, 0) };
     private readonly Button _bouton = new() { AutoSize = true, Visible = false, Font = new Font("Segoe UI", 9.5f), Padding = new Padding(6, 2, 6, 2) };
@@ -55,14 +50,7 @@ internal sealed class LigneVerification : TableLayoutPanel
     public void Definir(Statut statut, string detail)
     {
         Statut = statut;
-        _pastille.Text = statut switch
-        {
-            Statut.Ok => "✅",
-            Statut.Attention => "⚠️",
-            Statut.Erreur => "❌",
-            Statut.EnCours => "⏳",
-            _ => "⚪",
-        };
+        _pastille.Statut = statut;
         _detail.Text = detail;
         _titre.ForeColor = statut == Statut.AVenir ? SystemColors.GrayText : SystemColors.ControlText;
         _detail.ForeColor = statut == Statut.AVenir ? SystemColors.GrayText : SystemColors.ControlText;

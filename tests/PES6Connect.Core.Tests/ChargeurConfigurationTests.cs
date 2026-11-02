@@ -73,3 +73,32 @@ public sealed class ChargeurConfigurationTests : IDisposable
     public void Format_de_l_id_reseau(string id, bool attendu) =>
         Assert.Equal(attendu, ChargeurConfiguration.EstIdReseauValide(id));
 }
+
+public sealed class ModificationConfigurationTests : IDisposable
+{
+    private readonly string _dossier = Directory.CreateTempSubdirectory("pes6connect-tests").FullName;
+    private string Chemin => Path.Combine(_dossier, ChargeurConfiguration.NomFichier);
+
+    public void Dispose() => Directory.Delete(_dossier, recursive: true);
+
+    [Fact]
+    public void Modifier_conserve_les_autres_valeurs()
+    {
+        File.WriteAllText(Chemin, """{ "nomJoueur": "Awa", "idReseauZeroTier": "633e31d8a269ea13" }""");
+
+        var erreur = ChargeurConfiguration.Modifier(Chemin, c => c.EmpreintePes6 = new string('a', 64));
+
+        Assert.Null(erreur);
+        var relu = ChargeurConfiguration.Charger(Chemin);
+        Assert.Equal(EtatConfiguration.Valide, relu.Etat);
+        Assert.Equal("Awa", relu.Configuration!.NomJoueur);
+        Assert.Equal(new string('a', 64), relu.Configuration.EmpreintePes6);
+    }
+
+    [Fact]
+    public void Empreinte_mal_formee_est_signalee()
+    {
+        File.WriteAllText(Chemin, """{ "nomJoueur": "Awa", "idReseauZeroTier": "633e31d8a269ea13", "empreintePes6": "1234" }""");
+        Assert.Contains("64 caractères", Assert.Single(ChargeurConfiguration.Charger(Chemin).Problemes));
+    }
+}
