@@ -12,12 +12,13 @@ internal sealed class FenetrePrincipale : Form
     private readonly string _cheminConfig;
     private readonly SondeZeroTierWindows _sonde;
     private readonly InstallateurZeroTier _installateur;
+    private readonly ClientApiZeroTier _api = new();
 
     private readonly LigneVerification _ligneConfig = new("Fichier de configuration");
     private readonly LigneVerification _ligneZeroTier = new("ZeroTier");
+    private readonly LigneVerification _ligneReseau = new("Notre réseau");
     private readonly LigneVerification[] _lignesAVenir =
     [
-        new("Rejoindre notre réseau"),
         new("PES 6 (version identique)"),
         new("Pare-feu Windows"),
         new("Priorité de la carte ZeroTier"),
@@ -26,8 +27,15 @@ internal sealed class FenetrePrincipale : Form
     private readonly Button _boutonReverifier = new() { Text = "Tout revérifier", AutoSize = true, Padding = new Padding(8, 3, 8, 3) };
     private readonly Button _boutonRapport = new() { Text = "Copier le rapport", AutoSize = true, Padding = new Padding(8, 3, 8, 3) };
 
+    // Pendant l'attente d'approbation, l'état du réseau est revérifié toutes les 10 secondes.
+    private readonly System.Windows.Forms.Timer _minuterieAttente = new() { Interval = 10_000 };
+
     private ObservationZeroTier? _derniereObservation;
     private ResultatInstallation? _derniereInstallation;
+    private string? _idReseau;
+    private string? _identifiantPc;
+    private ReseauZeroTier? _dernierReseau;
+    private bool _verificationReseauEnCours;
 
     public FenetrePrincipale(string cheminConfig, SondeZeroTierWindows sonde, InstallateurZeroTier installateur)
     {
@@ -50,7 +58,7 @@ internal sealed class FenetrePrincipale : Form
             AutoScroll = true,
             Padding = new Padding(12),
         };
-        foreach (var ligne in new[] { _ligneConfig, _ligneZeroTier }.Concat(_lignesAVenir))
+        foreach (var ligne in LignesActives().Concat(_lignesAVenir))
         {
             ligne.Width = 600;
             ligne.Dock = DockStyle.None;
@@ -77,7 +85,15 @@ internal sealed class FenetrePrincipale : Form
         _boutonReverifier.Click += async (_, _) => await VerifierToutAsync();
         _boutonRapport.Click += (_, _) => CopierRapport();
         Shown += async (_, _) => await VerifierToutAsync();
+        _minuterieAttente.Tick += async (_, _) => await VerifierReseauAsync(silencieux: true);
+        FormClosed += (_, _) =>
+        {
+            _minuterieAttente.Dispose();
+            _api.Dispose();
+        };
     }
+
+    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau];
 
     private async Task VerifierToutAsync()
     {
@@ -86,6 +102,7 @@ internal sealed class FenetrePrincipale : Form
         {
             VerifierConfiguration();
             await VerifierZeroTierAsync();
+            await VerifierReseauAsync();
         }
         finally
         {
@@ -98,6 +115,8 @@ internal sealed class FenetrePrincipale : Form
     private void VerifierConfiguration()
     {
         var resultat = ChargeurConfiguration.Charger(_cheminConfig);
+        var id = resultat.Configuration?.IdReseauZeroTier ?? "";
+        _idReseau = ChargeurConfiguration.EstIdReseauValide(id) ? id : null;
         var problemes = string.Join(Environment.NewLine, resultat.Problemes);
 
         switch (resultat.Etat)
@@ -171,6 +190,7 @@ internal sealed class FenetrePrincipale : Form
         {
             _ligneZeroTier.Definir(Statut.Erreur, erreur);
         }
+        await VerifierReseauAsync();
     }
 
     private async Task InstallerZeroTierAsync()
@@ -209,6 +229,7 @@ internal sealed class FenetrePrincipale : Form
                     return Task.CompletedTask;
                 });
             }
+            await VerifierReseauAsync();
         }
         finally
         {
@@ -230,6 +251,134 @@ internal sealed class FenetrePrincipale : Form
         }
     }
 
+    // ---------- Étape 2 : rejoindre notre réseau ----------
+
+    private async Task VerifierReseauAsync(bool silencieux = false)
+    {
+        if (_verificationReseauEnCours)
+        {
+            return;
+        }
+        if (_idReseau is null)
+        {
+            ArreterAttente();
+            _ligneReseau.Definir(Statut.AVenir, "En attente : l'identifiant du réseau doit d'abord être correct dans le fichier de configuration.");
+            _ligneReseau.DefinirAction(null);
+            return;
+        }
+        if (_derniereObservation?.Service != EtatService.Demarre)
+        {
+            ArreterAttente();
+            _ligneReseau.Definir(Statut.AVenir, "En attente : ZeroTier doit d'abord fonctionner.");
+            _ligneReseau.DefinirAction(null);
+            return;
+        }
+
+        _verificationReseauEnCours = true;
+        if (!silencieux)
+        {
+            _ligneReseau.Definir(Statut.EnCours, "Vérification…");
+            _ligneReseau.DefinirAction(null);
+        }
+        try
+        {
+            _identifiantPc ??= await _api.LireIdentifiantPcAsync();
+            AfficherReseau(await _api.LireReseauAsync(_idReseau));
+        }
+        catch (ErreurZeroTier ex)
+        {
+            ArreterAttente();
+            _ligneReseau.Definir(Statut.Erreur, ex.Message);
+            _ligneReseau.DefinirAction(null);
+        }
+        finally
+        {
+            _verificationReseauEnCours = false;
+        }
+    }
+
+    private void AfficherReseau(ReseauZeroTier? reseau)
+    {
+        _dernierReseau = reseau;
+        var diagnostic = DiagnosticReseau.Evaluer(reseau, _identifiantPc);
+        _ligneReseau.Definir(diagnostic.Niveau switch
+        {
+            NiveauVerification.Ok => Statut.Ok,
+            NiveauVerification.Attention => Statut.Attention,
+            _ => Statut.Erreur,
+        }, diagnostic.Message);
+
+        if (diagnostic.Action == ActionProposee.Rejoindre)
+        {
+            _ligneReseau.DefinirAction("Rejoindre", RejoindreReseauAsync);
+        }
+        else if (DiagnosticReseau.EstEnAttente(reseau) && _identifiantPc is not null)
+        {
+            _ligneReseau.DefinirAction("Copier mon identifiant", CopierIdentifiantAsync);
+        }
+        else
+        {
+            _ligneReseau.DefinirAction(null);
+        }
+
+        if (DiagnosticReseau.EstEnAttente(reseau))
+        {
+            _minuterieAttente.Start();
+        }
+        else
+        {
+            ArreterAttente();
+        }
+    }
+
+    private async Task RejoindreReseauAsync()
+    {
+        if (_idReseau is null)
+        {
+            return;
+        }
+        _verificationReseauEnCours = true;
+        _ligneReseau.Definir(Statut.EnCours, "Connexion au réseau…");
+        _ligneReseau.DefinirAction(null);
+        try
+        {
+            _identifiantPc ??= await _api.LireIdentifiantPcAsync();
+            var reseau = await _api.RejoindreAsync(_idReseau);
+
+            // ZeroTier met quelques secondes à obtenir sa réponse : on patiente jusqu'à 15 s.
+            var chrono = System.Diagnostics.Stopwatch.StartNew();
+            while (reseau.Statut is "REQUESTING_CONFIGURATION" or "" && chrono.Elapsed < TimeSpan.FromSeconds(15))
+            {
+                await Task.Delay(1500);
+                reseau = await _api.LireReseauAsync(_idReseau) ?? reseau;
+            }
+            AfficherReseau(reseau);
+        }
+        catch (ErreurZeroTier ex)
+        {
+            _ligneReseau.Definir(Statut.Erreur, ex.Message);
+            _ligneReseau.DefinirAction("Réessayer", RejoindreReseauAsync);
+        }
+        finally
+        {
+            _verificationReseauEnCours = false;
+        }
+    }
+
+    private Task CopierIdentifiantAsync()
+    {
+        if (_identifiantPc is not null)
+        {
+            Clipboard.SetText(_identifiantPc);
+            MessageBox.Show(this,
+                $"Ton identifiant ZeroTier ({_identifiantPc}) est copié.\n\nEnvoie-le à l'organisatrice pour qu'elle t'accepte.",
+                "PES6 Connect", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        return Task.CompletedTask;
+    }
+
+    private void ArreterAttente() => _minuterieAttente.Stop();
+
     // ---------- Rapport pour le dépannage ----------
 
     private void CopierRapport()
@@ -239,13 +388,18 @@ internal sealed class FenetrePrincipale : Form
         rapport.AppendLine($"Windows : {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
         rapport.AppendLine($"Date : {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         rapport.AppendLine();
-        foreach (var ligne in new[] { _ligneConfig, _ligneZeroTier })
+        foreach (var ligne in LignesActives())
         {
             rapport.AppendLine($"[{ligne.Statut}] {ligne.Titre} : {ligne.Detail.Replace(Environment.NewLine, " / ")}");
         }
         if (_derniereObservation is { } o)
         {
             rapport.AppendLine($"ZeroTier : service={o.Service}, exe={o.CheminExecutable ?? "-"}, version={o.Version ?? "-"}");
+        }
+        rapport.AppendLine($"Identifiant ZeroTier du PC : {_identifiantPc ?? "-"}");
+        if (_dernierReseau is { } r)
+        {
+            rapport.AppendLine($"Réseau : id={r.Id}, statut={r.Statut}, adresses={string.Join(" ", r.AdressesAttribuees)}, carte={r.NomCarte ?? "-"}");
         }
         if (_derniereInstallation is { } i)
         {

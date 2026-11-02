@@ -43,10 +43,32 @@
 | T6 | PC **sans** ZeroTier (ou désinstallé) | « Installer ZeroTier » | ⏳ 1-3 min puis ✅ ; l'icône ZeroTier apparaît dans la barre des tâches |
 | T7 | Lancer l'exe et répondre « Non » aux droits administrateur | — | L'outil ne se lance pas (comportement normal de Windows) |
 
+## Étape 2 — Rejoindre notre réseau : comment ça marche
+
+- L'ID du réseau (`633e31d8a269ea13`) est lu dans `pes6connect.json`.
+- PES6 Connect parle au service ZeroTier du PC par son « guichet » local
+  (`http://127.0.0.1:9993`), protégé par le fichier `authtoken.secret` que seul un
+  administrateur peut lire : c'est une des raisons de la demande de droits administrateur.
+- Bouton **Rejoindre** → demande envoyée. Tant que l'organisatrice n'a pas accepté le
+  joueur, la ligne affiche ⚠️ « Demande envoyée » et l'identifiant ZeroTier du PC, avec un
+  bouton **Copier mon identifiant**. L'outil revérifie toutes les 10 secondes : la ligne
+  passe au vert toute seule après l'approbation.
+- Voir [organisatrice.md](organisatrice.md) pour l'approbation.
+
+## Procédure de test de l'étape 2
+
+| # | Situation de départ | Action | Résultat attendu |
+|---|---|---|---|
+| R1 | ZeroTier OK, réseau jamais rejoint | Lancer l'exe | ⚠️ « Tu n'as pas encore rejoint notre réseau », bouton **Rejoindre** |
+| R2 | Suite de R1 | **Rejoindre** | ⚠️ « Demande envoyée… Ton identifiant ZeroTier : xxxxxxxxxx » ; Windows peut demander si le PC doit être « détectable » : répondre **Oui** |
+| R3 | Suite de R2 | **Copier mon identifiant**, puis coller dans un message | L'identifiant correspond à celui visible dans Members sur my.zerotier.com |
+| R4 | Suite de R2, sans fermer l'outil | L'organisatrice coche **Auth** | En moins de 10 s : ✅ « Connecté au réseau … Ton adresse : 10.x.x.x » |
+| R5 | Réseau déjà rejoint et accepté | Relancer l'exe | ✅ directement |
+| R6 | Mettre un faux ID valide (ex. `0000000000000000`) dans le fichier | **Tout revérifier** puis **Rejoindre** | ❌ « Ce réseau n'existe pas » (ou ⚠️ en attente : ZeroTier peut mettre du temps à répondre) |
+| R7 | Arrêter le service ZeroTier | **Tout revérifier** | Ligne réseau grisée « En attente : ZeroTier doit d'abord fonctionner » |
+
 ## Étapes suivantes (rappel)
 
-2. Rejoindre le réseau (API locale de ZeroTier, port 9993, jeton `authtoken.secret`) et
-   afficher l'état : en attente d'approbation / connecté + adresse IP.
 3. Passer la carte ZeroTier en réseau « Privé » et lui donner la plus petite métrique.
 4. Empreinte SHA-256 de `pes6.exe` comparée à la référence du fichier de config.
 5. Règle de pare-feu entrante autorisant `pes6.exe`.

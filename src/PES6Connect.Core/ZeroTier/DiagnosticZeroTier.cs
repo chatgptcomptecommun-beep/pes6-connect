@@ -12,6 +12,7 @@ public enum ActionProposee
     Aucune,
     Installer,
     DemarrerService,
+    Rejoindre,
 }
 
 public sealed record ResultatVerification(NiveauVerification Niveau, string Message, ActionProposee Action);

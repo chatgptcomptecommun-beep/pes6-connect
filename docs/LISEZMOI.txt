@@ -7,7 +7,7 @@ PES6 Connect - mode d'emploi rapide
 2. Ouvre « pes6connect.json » avec le Bloc-notes et remplis :
      "nomJoueur": ton prénom ou pseudo,
      "idReseauZeroTier": l'identifiant du réseau donné par l'organisatrice.
-   (En général, l'organisatrice te l'envoie déjà rempli.)
+   (L'identifiant du réseau est déjà rempli : 633e31d8a269ea13.)
 
 3. Double-clique sur PES6Connect.exe.
 
@@ -20,6 +20,12 @@ PES6 Connect - mode d'emploi rapide
 
 4. Suis les indications de la fenêtre :
      ✅ tout va bien   ⚠️ action conseillée   ❌ à corriger
+
+   Pour rejoindre notre réseau : clique sur « Rejoindre », puis sur
+   « Copier mon identifiant » et envoie-le à l'organisatrice.
+   Dès qu'elle t'a accepté, la ligne passe au vert toute seule.
+   Si Windows demande si ton PC doit être « détectable » sur ce réseau,
+   réponds « Oui ».
 
 En cas de problème : clique sur « Copier le rapport », colle-le dans
 un message (Ctrl+V) et envoie-le avec une capture d'écran.
