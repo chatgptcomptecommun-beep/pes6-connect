@@ -15,12 +15,16 @@ namespace PES6Connect.Core.Reseau;
 /// « Annuler » à la question « Autoriser l'accès ? » au premier lancement du jeu.
 /// Elles l'emportent sur toute autorisation.
 /// </param>
+/// <param name="RegleOutilOk">
+/// La règle qui laisse PES6 Connect recevoir les annonces des autres joueurs (UDP 47106) est correcte.
+/// </param>
 public sealed record EtatPareFeu(
     bool RegleExiste,
     bool RegleActive,
     string? Programme,
     string? Profils,
-    IReadOnlyList<string> Blocages);
+    IReadOnlyList<string> Blocages,
+    bool RegleOutilOk = true);
 
 public static class PareFeu
 {
@@ -28,6 +32,10 @@ public static class PareFeu
     public const string NomRegle = "PES6Connect-PES6-Entrant";
     public const string NomAffiche = "PES 6 (PES6 Connect)";
     public const string Groupe = "PES6 Connect";
+
+    /// <summary>Règle qui laisse PES6 Connect lui-même recevoir les autres joueurs (étape 6).</summary>
+    public const string NomRegleOutil = "PES6Connect-Presence-Entrant";
+    public const string NomAfficheOutil = "PES6 Connect (joueurs en ligne)";
 
     /// <summary>
     /// Met un chemin entre apostrophes pour PowerShell (une apostrophe s'écrit '' à l'intérieur).
@@ -55,7 +63,8 @@ public static class PareFeu
             Booleen(e, "regleActive"),
             Texte(e, "programme"),
             Texte(e, "profils"),
-            blocages);
+            blocages,
+            Booleen(e, "regleOutil"));
     }
 
     public static ResultatVerification Evaluer(EtatPareFeu etat, string cheminPes6)
@@ -80,8 +89,14 @@ public static class PareFeu
             return new(NiveauVerification.Attention,
                 "La règle du pare-feu pour PES 6 est incorrecte (désactivée ou pour un autre fichier).", ActionProposee.CorrigerPareFeu);
         }
+        if (!etat.RegleOutilOk)
+        {
+            return new(NiveauVerification.Attention,
+                "PES 6 est autorisé, mais PES6 Connect ne peut pas encore recevoir les autres joueurs (règle manquante).",
+                ActionProposee.CorrigerPareFeu);
+        }
         return new(NiveauVerification.Ok,
-            "PES 6 est autorisé par le pare-feu Windows sur les réseaux privés.", ActionProposee.Aucune);
+            "PES 6 et PES6 Connect sont autorisés par le pare-feu Windows sur les réseaux privés.", ActionProposee.Aucune);
     }
 
     private static bool Booleen(JsonElement e, string nom) =>

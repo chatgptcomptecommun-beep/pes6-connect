@@ -55,6 +55,16 @@ public sealed class PareFeuTests
     }
 
     [Fact]
+    public void Regle_de_l_outil_manquante_propose_de_corriger()
+    {
+        var d = PareFeu.Evaluer(Etat() with { RegleOutilOk = false }, Pes6);
+        Assert.Equal(ActionProposee.CorrigerPareFeu, d.Action);
+        Assert.Contains("PES6 Connect", d.Message);
+        Assert.False(PareFeu.Lire("{}").RegleOutilOk);
+        Assert.True(PareFeu.Lire("{\"regleOutil\":true}").RegleOutilOk);
+    }
+
+    [Fact]
     public void Apostrophes_sont_doublees_pour_powershell() =>
         Assert.Equal("'C:\\Jeux d''Awa\\PES6.exe'", PareFeu.ChaineCitee(@"C:\Jeux d'Awa\PES6.exe"));
 }

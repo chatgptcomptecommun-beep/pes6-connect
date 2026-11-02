@@ -21,7 +21,7 @@ Mode d'emploi joueur : [docs/LISEZMOI.txt](docs/LISEZMOI.txt).
 | 3 | Réseau ZeroTier en « Privé » + carte ZeroTier prioritaire | ✅ testé (PC de l'organisatrice) |
 | 4 | Trouver PES 6 et comparer l'empreinte de `PES6.exe` | ✅ testé, référence définie |
 | 5 | Règle de pare-feu Windows pour PES 6 | ✅ testé (F5 à faire à deux) |
-| 6 | Joueurs en ligne, ping, meilleur hôte | à venir |
+| 6 | Joueurs en ligne, ping, meilleur hôte | ✅ fait, à tester à deux |
 | — | Phase 2 : site web des championnats | plus tard |
 
 Détails des choix et procédures de test : [docs/plan.md](docs/plan.md).

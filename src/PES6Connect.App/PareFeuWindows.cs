@@ -1,3 +1,4 @@
+using PES6Connect.Core.Presence;
 using PES6Connect.Core.Reseau;
 
 namespace PES6Connect.App;
@@ -5,6 +6,9 @@ namespace PES6Connect.App;
 /// <summary>Lit et modifie le pare-feu Windows pour PES6.exe (via PowerShell).</summary>
 internal static class PareFeuWindows
 {
+    /// <summary>Chemin de PES6Connect.exe (la règle « joueurs en ligne » le vise).</summary>
+    private static string CheminOutil => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "PES6Connect.exe");
+
     // Règles actives, entrantes, qui bloquent ce programme (comparaison sans tenir compte des majuscules).
     private static string ScriptBlocages(string chemin) =>
         $"$p = {PareFeu.ChaineCitee(chemin)}; "
@@ -18,7 +22,12 @@ internal static class PareFeuWindows
             + "$ok = $false; $prog = $null; $prof = $null; "
             + "if ($r) { $prog = ($r | Get-NetFirewallApplicationFilter).Program; $prof = $r.Profile.ToString(); "
             + "$ok = ($r.Enabled.ToString() -eq 'True') -and ($r.Action.ToString() -eq 'Allow') -and ($r.Direction.ToString() -eq 'Inbound') }; "
-            + "@{ regleExiste = [bool]$r; regleActive = $ok; programme = $prog; profils = $prof; "
+            + $"$o = {PareFeu.ChaineCitee(CheminOutil)}; "
+            + $"$r2 = Get-NetFirewallRule -Name '{PareFeu.NomRegleOutil}' -ErrorAction SilentlyContinue; $ok2 = $false; "
+            + "if ($r2) { $ok2 = ($r2.Enabled.ToString() -eq 'True') -and ($r2.Action.ToString() -eq 'Allow') "
+            + "-and (($r2 | Get-NetFirewallApplicationFilter).Program -ieq $o) "
+            + $"-and ((($r2 | Get-NetFirewallPortFilter).LocalPort) -contains '{MessagePresence.Port}') }}; "
+            + "@{ regleExiste = [bool]$r; regleActive = $ok; programme = $prog; profils = $prof; regleOutil = $ok2; "
             + "blocages = @($blocs | ForEach-Object { $_.DisplayName }) } | ConvertTo-Json -Compress";
 
         var resultat = await ExecuteurPowerShell.ExecuterAsync(script);
@@ -46,16 +55,21 @@ internal static class PareFeuWindows
             + "$blocs | Disable-NetFirewallRule -ErrorAction Stop; "
             + $"Remove-NetFirewallRule -Name '{PareFeu.NomRegle}' -ErrorAction SilentlyContinue; "
             + $"New-NetFirewallRule -Name '{PareFeu.NomRegle}' -DisplayName '{PareFeu.NomAffiche}' -Group '{PareFeu.Groupe}' "
-            + $"-Direction Inbound -Action Allow -Program {PareFeu.ChaineCitee(chemin)} -Profile Private,Domain -ErrorAction Stop | Out-Null";
+            + $"-Direction Inbound -Action Allow -Program {PareFeu.ChaineCitee(chemin)} -Profile Private,Domain -ErrorAction Stop | Out-Null; "
+            + $"Remove-NetFirewallRule -Name '{PareFeu.NomRegleOutil}' -ErrorAction SilentlyContinue; "
+            + $"New-NetFirewallRule -Name '{PareFeu.NomRegleOutil}' -DisplayName '{PareFeu.NomAfficheOutil}' -Group '{PareFeu.Groupe}' "
+            + $"-Direction Inbound -Action Allow -Program {PareFeu.ChaineCitee(CheminOutil)} -Protocol UDP -LocalPort {MessagePresence.Port} "
+            + "-Profile Private,Domain -ErrorAction Stop | Out-Null";
         var resultat = await ExecuteurPowerShell.ExecuterAsync(script);
         return resultat.Reussi ? null : "La correction du pare-feu a échoué : " + PremiereLigne(resultat.Erreurs);
     }
 
-    /// <summary>Supprime la règle créée par PES6 Connect. Renvoie null si tout va bien.</summary>
+    /// <summary>Supprime les règles créées par PES6 Connect. Renvoie null si tout va bien.</summary>
     public static async Task<string?> SupprimerAsync()
     {
         var resultat = await ExecuteurPowerShell.ExecuterAsync(
-            $"Remove-NetFirewallRule -Name '{PareFeu.NomRegle}' -ErrorAction Stop");
+            $"Remove-NetFirewallRule -Name '{PareFeu.NomRegle}' -ErrorAction Stop; "
+            + $"Remove-NetFirewallRule -Name '{PareFeu.NomRegleOutil}' -ErrorAction SilentlyContinue");
         return resultat.Reussi ? null : "La suppression a échoué : " + PremiereLigne(resultat.Erreurs);
     }
 

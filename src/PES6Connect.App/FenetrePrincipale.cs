@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using PES6Connect.Core.Configuration;
 using PES6Connect.Core.Pes6;
+using PES6Connect.Core.Presence;
 using PES6Connect.Core.Reseau;
 using PES6Connect.Core.ZeroTier;
 
@@ -22,10 +23,8 @@ internal sealed class FenetrePrincipale : Form
     private readonly LigneVerification _ligneCarte = new("Réglages réseau de Windows");
     private readonly LigneVerification _lignePes6 = new("PES 6 (version identique)");
     private readonly LigneVerification _lignePareFeu = new("Pare-feu Windows");
-    private readonly LigneVerification[] _lignesAVenir =
-    [
-        new("Joueurs en ligne"),
-    ];
+    private readonly LigneVerification _ligneJoueurs = new("Joueurs en ligne");
+    private readonly LigneVerification[] _lignesAVenir = [];
     private readonly Button _boutonReverifier = new() { Text = "Tout revérifier", AutoSize = true, Padding = new Padding(8, 3, 8, 3) };
     private readonly Button _boutonRapport = new() { Text = "Copier le rapport", AutoSize = true, Padding = new Padding(8, 3, 8, 3) };
 
@@ -45,6 +44,14 @@ internal sealed class FenetrePrincipale : Form
     private string? _empreintePes6;
     private EtatPareFeu? _dernierPareFeu;
 
+    // Étape 6 : présence des autres joueurs, rafraîchie toutes les 2 secondes.
+    private readonly System.Windows.Forms.Timer _minuterieJoueurs = new() { Interval = 2_000 };
+    private ServicePresence? _presence;
+    private IReadOnlySet<string> _relayes = new HashSet<string>();
+    private int _toursAvantRelais;
+    private bool _lectureRelaisEnCours;
+    private string _texteJoueurs = "";
+
     public FenetrePrincipale(string cheminConfig, SondeZeroTierWindows sonde, InstallateurZeroTier installateur)
     {
         _cheminConfig = cheminConfig;
@@ -55,7 +62,7 @@ internal sealed class FenetrePrincipale : Form
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 660);
+        ClientSize = new Size(660, 720);
         MinimumSize = new Size(560, 480);
 
         var liste = new FlowLayoutPanel
@@ -94,14 +101,18 @@ internal sealed class FenetrePrincipale : Form
         _boutonRapport.Click += (_, _) => CopierRapport();
         Shown += async (_, _) => await VerifierToutAsync();
         _minuterieAttente.Tick += async (_, _) => await VerifierReseauAsync(silencieux: true);
+        _minuterieJoueurs.Tick += async (_, _) => await RafraichirJoueursAsync();
         FormClosed += (_, _) =>
         {
+            _minuterieJoueurs.Dispose();
+            _presence?.Dispose();
             _minuterieAttente.Dispose();
             _api.Dispose();
         };
+        _ligneJoueurs.Definir(Statut.AVenir, "En attente : il faut d'abord être connecté à notre réseau.");
     }
 
-    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau, _ligneCarte, _lignePes6, _lignePareFeu];
+    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau, _ligneCarte, _lignePes6, _lignePareFeu, _ligneJoueurs];
 
     private static Statut VersStatut(NiveauVerification niveau) => niveau switch
     {
@@ -320,6 +331,7 @@ internal sealed class FenetrePrincipale : Form
         _dernierReseau = reseau;
         var diagnostic = DiagnosticReseau.Evaluer(reseau, _identifiantPc);
         _ligneReseau.Definir(VersStatut(diagnostic.Niveau), diagnostic.Message);
+        AjusterPresence();
 
         if (diagnostic.Action == ActionProposee.Rejoindre)
         {
@@ -660,6 +672,86 @@ internal sealed class FenetrePrincipale : Form
         await VerifierPes6Async();
     }
 
+    // ---------- Étape 6 : joueurs en ligne, ping, meilleur hôte ----------
+
+    /// <summary>Démarre (ou arrête) l'écoute des autres joueurs selon l'état du réseau.</summary>
+    private void AjusterPresence()
+    {
+        var reseau = _dernierReseau is { Statut: "OK" } r && r.AdresseIPv4AvecPrefixe is { } cidr ? ReseauIPv4.Lire(cidr) : null;
+        if (reseau is null || _identifiantPc is null)
+        {
+            ArreterPresence();
+            _ligneJoueurs.Definir(Statut.AVenir, "En attente : il faut d'abord être connecté à notre réseau.");
+            _ligneJoueurs.DefinirAction(null);
+            return;
+        }
+        if (_presence is not null && _presence.Reseau == reseau)
+        {
+            return; // Déjà en route sur la bonne adresse.
+        }
+
+        ArreterPresence();
+        try
+        {
+            _presence = ServicePresence.Demarrer(_identifiantPc, reseau, () => (_config?.NomJoueur ?? "", _empreintePes6 ?? ""));
+        }
+        catch (ErreurZeroTier ex)
+        {
+            _ligneJoueurs.Definir(Statut.Erreur, ex.Message);
+            _ligneJoueurs.DefinirAction(null);
+            return;
+        }
+        _ligneJoueurs.Definir(Statut.EnCours, "À l'écoute des autres joueurs…");
+        _ligneJoueurs.DefinirAction(null);
+        _toursAvantRelais = 0;
+        _minuterieJoueurs.Start();
+    }
+
+    private void ArreterPresence()
+    {
+        _minuterieJoueurs.Stop();
+        _presence?.Dispose();
+        _presence = null;
+        _texteJoueurs = "";
+    }
+
+    private async Task RafraichirJoueursAsync()
+    {
+        if (_presence is not { } presence || _identifiantPc is not { } monId)
+        {
+            return;
+        }
+
+        var maintenant = presence.Maintenant;
+        var joueurs = presence.Table.Joueurs(maintenant);
+        var reference = _config?.EmpreintePes6 ?? "";
+        var suggestion = ChoixHote.Suggerer(monId, _config?.NomJoueur ?? "", presence.Table.MesPings(maintenant), joueurs,
+            j => AffichageJoueurs.MemeVersion(j, reference));
+        var (niveau, texte) = AffichageJoueurs.Rediger(joueurs, _relayes, reference, suggestion);
+
+        _texteJoueurs = texte;
+        _ligneJoueurs.Definir(niveau is { } n ? VersStatut(n) : Statut.EnCours, texte);
+
+        // Toutes les ~6 s, on demande à ZeroTier quels joueurs passent par un relais.
+        if (joueurs.Count > 0 && --_toursAvantRelais <= 0 && !_lectureRelaisEnCours)
+        {
+            _toursAvantRelais = 3;
+            _lectureRelaisEnCours = true;
+            try
+            {
+                _relayes = await _api.LirePairsRelayesAsync();
+            }
+            catch (ErreurZeroTier)
+            {
+                // Information secondaire : on garde la valeur précédente.
+            }
+            finally
+            {
+                _lectureRelaisEnCours = false;
+            }
+        }
+    }
+
     // ---------- Rapport pour le dépannage ----------
 
     private void CopierRapport()
@@ -694,6 +786,11 @@ internal sealed class FenetrePrincipale : Form
         {
             rapport.AppendLine($"Pare-feu : règle={pf.RegleExiste}, active={pf.RegleActive}, profils={pf.Profils ?? "-"}, "
                 + $"programme={pf.Programme ?? "-"}, blocages={(pf.Blocages.Count == 0 ? "aucun" : string.Join(" | ", pf.Blocages))}");
+        }
+        rapport.AppendLine($"Présence : {(_presence is null ? "arrêtée" : $"active (diffusion {_presence.Reseau.Diffusion}:{MessagePresence.Port})")}");
+        if (_texteJoueurs.Length > 0)
+        {
+            rapport.AppendLine(_texteJoueurs);
         }
         if (_derniereInstallation is { } i)
         {

@@ -40,6 +40,10 @@ internal sealed class ClientApiZeroTier : IDisposable
         LecteurApiZeroTier.LireReseaux(await EnvoyerAsync(HttpMethod.Get, "network"))
             .FirstOrDefault(r => r.Id == idReseau);
 
+    /// <summary>Identifiants des PC joints par un relais ZeroTier (connexion lente).</summary>
+    public async Task<IReadOnlySet<string>> LirePairsRelayesAsync() =>
+        LecteurApiZeroTier.LirePairsRelayes(await EnvoyerAsync(HttpMethod.Get, "peer"));
+
     /// <summary>Demande à rejoindre le réseau (sans effet si c'est déjà fait).</summary>
     public async Task<ReseauZeroTier> RejoindreAsync(string idReseau) =>
         LecteurApiZeroTier.LireReseau(await EnvoyerAsync(HttpMethod.Post, $"network/{idReseau}", "{}"));

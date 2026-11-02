@@ -27,5 +27,9 @@ PES6 Connect - mode d'emploi rapide
    Si Windows demande si ton PC doit être « détectable » sur ce réseau,
    réponds « Oui ».
 
+5. La ligne « Joueurs en ligne » montre les amis qui ont aussi ouvert
+   PES6 Connect, leur ping (plus c'est petit, mieux c'est) et l'hôte
+   conseillé : c'est lui qui crée la partie LAN dans PES 6.
+
 En cas de problème : clique sur « Copier le rapport », colle-le dans
 un message (Ctrl+V) et envoie-le avec une capture d'écran.

@@ -132,7 +132,41 @@ Empreinte de référence (PC de l'organisatrice, PES 6 v1.0 FR) :
 | F4 | Suite de F2 | **Annuler** → OK | ⚠️ « Aucune règle… », puis **Corriger** remet ✅ |
 | F5 | Avec un ami (plus tard) | L'un crée une partie LAN dans PES 6 | L'autre la voit dans la liste des parties LAN |
 
+## Étape 6 — Joueurs en ligne, ping, meilleur hôte : comment ça marche
+
+- Chaque PES6 Connect ouvert envoie toutes les 3 s un petit message « je suis là » (port **UDP 47106**)
+  à tout le réseau ZeroTier (diffusion) et, en direct, aux joueurs déjà connus. Il contient
+  l'identifiant ZeroTier du PC, le prénom, l'empreinte de PES 6 et les pings mesurés.
+- Toutes les 3 s, il envoie aussi un « ping » à chaque joueur connu, qui répond aussitôt :
+  le temps de l'aller-retour est le ping (moyenne des 5 dernières mesures).
+- Un joueur disparaît de la liste s'il ne s'est pas manifesté depuis 10 s.
+- **Hôte conseillé** : celui dont le **pire ping** vers les autres est le plus petit (dans PES 6,
+  chacun échange avec l'hôte, c'est donc le joueur le plus lent qui compte). Les joueurs dont
+  la version de PES 6 est différente ne sont pas proposés. À deux, les deux se valent.
+- La ligne signale aussi les joueurs joints par un **relais** ZeroTier (pas de connexion directe :
+  plus lent) et ceux dont la **version de PES 6 est différente**.
+- Une deuxième règle de pare-feu « PES6 Connect (joueurs en ligne) » (UDP 47106, pour
+  PES6Connect.exe) est créée par le bouton **Corriger** de la ligne Pare-feu. Si tu déplaces le
+  dossier de PES6 Connect, la ligne Pare-feu redemandera **Corriger**.
+- Sécurité : seuls les messages venant d'adresses de notre réseau ZeroTier sont lus ; ils sont
+  vérifiés strictement (taille, format, identifiants), et le reste est ignoré.
+
+Vérifié hors Windows : une simulation avec un faux deuxième joueur (annonces, pings, réponses,
+calcul de l'hôte) a fonctionné. **Pas encore vérifié** : la diffusion sur un vrai réseau ZeroTier
+entre deux PC Windows.
+
+## Procédure de test de l'étape 6
+
+| # | Situation de départ | Action | Résultat attendu |
+|---|---|---|---|
+| J1 | Seul·e, étapes 1-5 au vert | Lancer l'exe | Ligne Pare-feu : ⚠️ « PES6 Connect ne peut pas encore recevoir… » → **Corriger** → ✅ |
+| J2 | Suite de J1 | Attendre | Ligne Joueurs : « À l'écoute… Aucun autre joueur en ligne » (pastille bleue) |
+| J3 | Avec un ami : les deux lancent l'exe | Attendre 10 s | Chacun voit l'autre avec son ping, puis « Hôte conseillé : l'un ou l'autre » |
+| J4 | Suite de J3 | L'ami ferme PES6 Connect | Il disparaît de la liste en ~10 s |
+| J5 | À trois | Attendre | Un hôte précis est conseillé (le plus central) |
+| J6 | Un ami avec un autre PES6.exe | — | « version de PES 6 différente ! » à côté de son nom ; il n'est jamais proposé comme hôte |
+| F5 | Avec un ami | L'hôte conseillé crée une partie LAN dans PES 6 | L'autre la voit et la rejoint |
+
 ## Étapes suivantes (rappel)
 
-6. Présence entre instances PES6 Connect sur le réseau ZeroTier, ping, connexion directe
-   ou relayée, hôte conseillé (pire ping minimal).
+- Phase 2 : page web pour organiser les matchs à 2 ou 3 et les championnats (calendrier, scores, classement).

@@ -14,6 +14,9 @@ public sealed record ReseauZeroTier(
     public string? AdresseIPv4 => AdressesAttribuees
         .Select(a => a.Split('/')[0])
         .FirstOrDefault(a => a.Contains('.'));
+
+    /// <summary>Première adresse IPv4 avec son préfixe (ex. « 10.147.20.5/24 »).</summary>
+    public string? AdresseIPv4AvecPrefixe => AdressesAttribuees.FirstOrDefault(a => a.Contains('.') && a.Contains('/'));
 }
 
 /// <summary>
@@ -34,6 +37,38 @@ public static class LecteurApiZeroTier
     {
         using var doc = JsonDocument.Parse(json);
         return Texte(doc.RootElement, "version");
+    }
+
+    /// <summary>
+    /// Réponse de GET /peer : identifiants des PC joints SANS chemin direct actif
+    /// (le trafic passe alors par un relais ZeroTier, plus lent).
+    /// </summary>
+    public static IReadOnlySet<string> LirePairsRelayes(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var relayes = new HashSet<string>();
+        if (doc.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return relayes;
+        }
+        foreach (var pair in doc.RootElement.EnumerateArray())
+        {
+            var id = Texte(pair, "address");
+            if (id is null || Texte(pair, "role") is "PLANET" or "MOON")
+            {
+                continue;
+            }
+            var direct = pair.TryGetProperty("paths", out var chemins) && chemins.ValueKind == JsonValueKind.Array
+                && chemins.EnumerateArray().Any(c =>
+                    c.ValueKind == JsonValueKind.Object
+                    && !(c.TryGetProperty("expired", out var exp) && exp.ValueKind == JsonValueKind.True)
+                    && (!c.TryGetProperty("active", out var act) || act.ValueKind == JsonValueKind.True));
+            if (!direct)
+            {
+                relayes.Add(id.ToLowerInvariant());
+            }
+        }
+        return relayes;
     }
 
     /// <summary>Réponse de GET /network : liste des réseaux rejoints.</summary>
