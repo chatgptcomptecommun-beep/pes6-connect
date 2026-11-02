@@ -107,8 +107,32 @@
 | P3 | Suite de P1 | **En faire la référence** | ✅ « version identique » ; l'empreinte est copiée → l'envoyer |
 | P4 | Modifier un caractère de `empreintePes6` dans le fichier | **Tout revérifier** | ❌ « Ta version de PES 6 est différente… » |
 
+Empreinte de référence (PC de l'organisatrice, PES 6 v1.0 FR) :
+`03b18895e72d791083b3a78b4ab49d0f1b3dbf6a874e835e8906480d191bc454`, inscrite dans
+`config/pes6connect.json`.
+
+## Étape 5 — Pare-feu Windows : comment ça marche
+
+- PES6 Connect crée une règle entrante **« PES 6 (PES6 Connect) »** (groupe « PES6 Connect »)
+  qui autorise `PES6.exe` sur les réseaux **privés** (c'est le cas du réseau ZeroTier après l'étape 3).
+  La règle vise le programme, pas des numéros de ports : pas besoin de connaître les ports du jeu.
+- Piège fréquent : au premier lancement de PES 6, si on a cliqué sur « Annuler » à la question
+  « Autoriser l'accès ? », Windows a créé des règles qui **bloquent** le jeu, et un blocage
+  l'emporte toujours sur une autorisation. PES6 Connect les détecte et les **désactive**
+  (sans les supprimer).
+- Bouton **Annuler** (quand tout est vert) : supprime la règle créée par PES6 Connect.
+
+## Procédure de test de l'étape 5
+
+| # | Situation de départ | Action | Résultat attendu |
+|---|---|---|---|
+| F1 | Première fois | Lancer l'exe | ⚠️ « Aucune règle… n'autorise PES 6 » (ou « bloque PES 6 (règle …) »), bouton **Corriger** |
+| F2 | Suite de F1 | **Corriger** | ✅ « PES 6 est autorisé par le pare-feu Windows sur les réseaux privés » |
+| F3 | Vérification à la main | Touche Windows → « Pare-feu Windows Defender avec fonctions avancées de sécurité » → Règles de trafic entrant | Règle « PES 6 (PES6 Connect) » activée, Autoriser, profils Domaine/Privé |
+| F4 | Suite de F2 | **Annuler** → OK | ⚠️ « Aucune règle… », puis **Corriger** remet ✅ |
+| F5 | Avec un ami (plus tard) | L'un crée une partie LAN dans PES 6 | L'autre la voit dans la liste des parties LAN |
+
 ## Étapes suivantes (rappel)
 
-5. Règle de pare-feu entrante autorisant `pes6.exe`.
 6. Présence entre instances PES6 Connect sur le réseau ZeroTier, ping, connexion directe
    ou relayée, hôte conseillé (pire ping minimal).

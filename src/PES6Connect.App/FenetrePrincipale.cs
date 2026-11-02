@@ -21,9 +21,9 @@ internal sealed class FenetrePrincipale : Form
     private readonly LigneVerification _ligneReseau = new("Notre réseau");
     private readonly LigneVerification _ligneCarte = new("Réglages réseau de Windows");
     private readonly LigneVerification _lignePes6 = new("PES 6 (version identique)");
+    private readonly LigneVerification _lignePareFeu = new("Pare-feu Windows");
     private readonly LigneVerification[] _lignesAVenir =
     [
-        new("Pare-feu Windows"),
         new("Joueurs en ligne"),
     ];
     private readonly Button _boutonReverifier = new() { Text = "Tout revérifier", AutoSize = true, Padding = new Padding(8, 3, 8, 3) };
@@ -42,6 +42,7 @@ internal sealed class FenetrePrincipale : Form
     private EtatCarteZeroTier? _derniereCarte;
     private string? _cheminPes6;
     private string? _empreintePes6;
+    private EtatPareFeu? _dernierPareFeu;
 
     public FenetrePrincipale(string cheminConfig, SondeZeroTierWindows sonde, InstallateurZeroTier installateur)
     {
@@ -53,7 +54,7 @@ internal sealed class FenetrePrincipale : Form
         Font = new Font("Segoe UI", 9.5f);
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 620);
+        ClientSize = new Size(640, 660);
         MinimumSize = new Size(560, 480);
 
         var liste = new FlowLayoutPanel
@@ -99,7 +100,7 @@ internal sealed class FenetrePrincipale : Form
         };
     }
 
-    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau, _ligneCarte, _lignePes6];
+    private LigneVerification[] LignesActives() => [_ligneConfig, _ligneZeroTier, _ligneReseau, _ligneCarte, _lignePes6, _lignePareFeu];
 
     private static Statut VersStatut(NiveauVerification niveau) => niveau switch
     {
@@ -529,6 +530,83 @@ internal sealed class FenetrePrincipale : Form
                 _lignePes6.DefinirAction(null);
                 break;
         }
+
+        await VerifierPareFeuAsync();
+    }
+
+    // ---------- Étape 5 : pare-feu Windows ----------
+
+    private async Task VerifierPareFeuAsync()
+    {
+        if (_cheminPes6 is null)
+        {
+            _dernierPareFeu = null;
+            _lignePareFeu.Definir(Statut.AVenir, "En attente : PES 6 doit d'abord être trouvé.");
+            _lignePareFeu.DefinirAction(null);
+            return;
+        }
+
+        _lignePareFeu.Definir(Statut.EnCours, "Vérification du pare-feu…");
+        _lignePareFeu.DefinirAction(null);
+        try
+        {
+            _dernierPareFeu = await PareFeuWindows.LireAsync(_cheminPes6);
+        }
+        catch (ErreurZeroTier ex)
+        {
+            _lignePareFeu.Definir(Statut.Erreur, ex.Message);
+            _lignePareFeu.DefinirAction("Réessayer", VerifierPareFeuAsync);
+            return;
+        }
+
+        var diagnostic = PareFeu.Evaluer(_dernierPareFeu, _cheminPes6);
+        _lignePareFeu.Definir(VersStatut(diagnostic.Niveau), diagnostic.Message);
+        if (diagnostic.Action == ActionProposee.CorrigerPareFeu)
+        {
+            _lignePareFeu.DefinirAction("Corriger", CorrigerPareFeuAsync);
+        }
+        else if (diagnostic.Niveau == NiveauVerification.Ok)
+        {
+            _lignePareFeu.DefinirAction("Annuler", SupprimerRegleAsync);
+        }
+        else
+        {
+            _lignePareFeu.DefinirAction(null);
+        }
+    }
+
+    private async Task CorrigerPareFeuAsync()
+    {
+        if (_cheminPes6 is null)
+        {
+            return;
+        }
+        _lignePareFeu.Definir(Statut.EnCours, "Réglage du pare-feu…");
+        var erreur = await PareFeuWindows.CorrigerAsync(_cheminPes6);
+        await VerifierPareFeuAsync();
+        if (erreur is not null && _lignePareFeu.Statut != Statut.Ok)
+        {
+            _lignePareFeu.Definir(Statut.Erreur, erreur);
+            _lignePareFeu.DefinirAction("Réessayer", CorrigerPareFeuAsync);
+        }
+    }
+
+    private async Task SupprimerRegleAsync()
+    {
+        var reponse = MessageBox.Show(this,
+            "Supprimer la règle du pare-feu qui autorise PES 6 ?\n\n"
+            + "Les autres joueurs ne pourront plus rejoindre tes parties. Tu pourras recliquer sur « Corriger » ensuite.",
+            "Pare-feu", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+        if (reponse != DialogResult.OK)
+        {
+            return;
+        }
+        var erreur = await PareFeuWindows.SupprimerAsync();
+        await VerifierPareFeuAsync();
+        if (erreur is not null)
+        {
+            _lignePareFeu.Definir(Statut.Erreur, erreur);
+        }
     }
 
     private async Task ChoisirPes6Async()
@@ -612,6 +690,11 @@ internal sealed class FenetrePrincipale : Form
         }
         rapport.AppendLine($"PES 6 : {_cheminPes6 ?? "introuvable"}");
         rapport.AppendLine($"Empreinte PES 6 : {_empreintePes6 ?? "-"}");
+        if (_dernierPareFeu is { } pf)
+        {
+            rapport.AppendLine($"Pare-feu : règle={pf.RegleExiste}, active={pf.RegleActive}, profils={pf.Profils ?? "-"}, "
+                + $"programme={pf.Programme ?? "-"}, blocages={(pf.Blocages.Count == 0 ? "aucun" : string.Join(" | ", pf.Blocages))}");
+        }
         if (_derniereInstallation is { } i)
         {
             rapport.AppendLine($"Installation : winget={(i.WingetDisponible ? "oui" : "non")}, code={i.CodeSortie?.ToString() ?? "-"}, {i.Message}");

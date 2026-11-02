@@ -16,6 +16,7 @@ public enum ActionProposee
     CorrigerCarte,
     ChoisirPes6,
     DefinirReference,
+    CorrigerPareFeu,
 }
 
 public sealed record ResultatVerification(NiveauVerification Niveau, string Message, ActionProposee Action);

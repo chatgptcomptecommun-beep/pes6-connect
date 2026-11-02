@@ -18,9 +18,9 @@ Mode d'emploi joueur : [docs/LISEZMOI.txt](docs/LISEZMOI.txt).
 | 0 | Lire `pes6connect.json` (nom du joueur, ID du réseau) | ✅ fait |
 | 1 | Vérifier que ZeroTier est installé et démarré, l'installer sinon | ✅ testé (cas « déjà installé ») |
 | 2 | Rejoindre le réseau ZeroTier en un clic | ✅ testé (PC de l'organisatrice) |
-| 3 | Réseau ZeroTier en « Privé » + carte ZeroTier prioritaire | ✅ fait, à tester |
-| 4 | Trouver PES 6 et comparer l'empreinte de `PES6.exe` | ✅ fait, à tester (référence à définir) |
-| 5 | Règle de pare-feu Windows pour PES 6 | à venir |
+| 3 | Réseau ZeroTier en « Privé » + carte ZeroTier prioritaire | ✅ testé (PC de l'organisatrice) |
+| 4 | Trouver PES 6 et comparer l'empreinte de `PES6.exe` | ✅ testé, référence définie |
+| 5 | Règle de pare-feu Windows pour PES 6 | ✅ fait, à tester |
 | 6 | Joueurs en ligne, ping, meilleur hôte | à venir |
 | — | Phase 2 : site web des championnats | plus tard |
 
