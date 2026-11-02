@@ -36,6 +36,7 @@ internal sealed class FenetrePrincipale : Form
     private ResultatInstallation? _derniereInstallation;
     private string? _idReseau;
     private string? _identifiantPc;
+    private string? _versionApi;
     private ReseauZeroTier? _dernierReseau;
     private bool _verificationReseauEnCours;
     private ConfigurationPes6Connect? _config;
@@ -381,15 +382,14 @@ internal sealed class FenetrePrincipale : Form
     /// <summary>Lit l'identifiant du PC et, si besoin, complète la version de ZeroTier affichée.</summary>
     private async Task LireStatutApiAsync()
     {
-        if (_identifiantPc is not null)
+        if (_identifiantPc is null)
         {
-            return;
+            (_identifiantPc, _versionApi) = await _api.LireStatutAsync();
         }
-        var (identifiant, version) = await _api.LireStatutAsync();
-        _identifiantPc = identifiant;
-        if (_derniereObservation is { Version: null } obs && version is not null)
+        // La version lue dans le fichier est souvent absente : on la complète à chaque vérification.
+        if (_derniereObservation is { Version: null } obs && _versionApi is not null)
         {
-            AfficherZeroTier(obs with { Version = version });
+            AfficherZeroTier(obs with { Version = _versionApi });
         }
     }
 
